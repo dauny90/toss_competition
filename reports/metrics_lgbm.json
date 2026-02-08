@@ -1,0 +1,14 @@
+{
+  "best_iteration": 800,
+  "categorical_features": [
+    "gender",
+    "age_group",
+    "inventory_id",
+    "day_of_week",
+    "hour",
+    "seq"
+  ],
+  "average_precision": 0.06243837096167431,
+  "weighted_logloss": 1.0742282470180122,
+  "competition_score": 0.2722726957292
+}
