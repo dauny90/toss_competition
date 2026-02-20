@@ -19,6 +19,7 @@ class TrainArtifacts:
     feature_names: List[str]
     categorical_features: List[str]
     categorical_levels: dict
+    frequency_maps: dict
     best_iteration: int
 
 
@@ -45,18 +46,42 @@ def _apply_categoricals(
     return df
 
 
+def _add_frequency_features(
+    df: pd.DataFrame,
+    categorical_cols: Iterable[str],
+    frequency_maps: Optional[dict] = None,
+) -> Tuple[pd.DataFrame, dict]:
+    if not categorical_cols:
+        return df, {}
+
+    freq_maps: dict = {} if frequency_maps is None else frequency_maps
+    total = float(len(df))
+    for col in categorical_cols:
+        if col not in df.columns:
+            continue
+        if frequency_maps is None:
+            counts = df[col].value_counts(dropna=False)
+            freq = (counts / total).to_dict()
+            freq_maps[col] = freq
+        freq = freq_maps.get(col, {})
+        df[f"{col}__freq"] = df[col].map(freq).fillna(0.0).astype(np.float32)
+    return df, freq_maps
+
+
 def _default_params(seed: int, scale_pos_weight: float) -> dict:
     return {
         "objective": "binary",
         "metric": ["binary_logloss", "auc"],
-        "learning_rate": 0.05,
-        "num_leaves": 255,
-        "min_data_in_leaf": 100,
-        "feature_fraction": 0.8,
-        "bagging_fraction": 0.8,
+        "learning_rate": 0.03,
+        "num_leaves": 512,
+        "min_data_in_leaf": 50,
+        "feature_fraction": 0.9,
+        "bagging_fraction": 0.9,
         "bagging_freq": 1,
         "max_depth": -1,
-        "max_bin": 255,
+        "max_bin": 511,
+        "min_gain_to_split": 0.0,
+        "lambda_l1": 0.0,
         "lambda_l2": 1.0,
         "scale_pos_weight": scale_pos_weight,
         "seed": seed,
@@ -72,8 +97,8 @@ def train_lgbm(
     categorical_cols: Optional[List[str]] = None,
     valid_frac: float = 0.0,
     seed: int = 42,
-    num_boost_round: int = 800,
-    early_stopping_rounds: int = 50,
+    num_boost_round: int = 3000,
+    early_stopping_rounds: int = 200,
     params: Optional[dict] = None,
 ) -> Tuple[TrainArtifacts, Optional[dict]]:
     train_path = Path(train_path)
@@ -101,6 +126,8 @@ def train_lgbm(
         for col in categorical_cols:
             if col in X.columns and hasattr(X[col], "cat"):
                 category_levels[col] = X[col].cat.categories
+
+    X, frequency_maps = _add_frequency_features(X, categorical_cols or [])
 
     n_pos = y.sum()
     n_neg = len(y) - n_pos
@@ -168,6 +195,7 @@ def train_lgbm(
         feature_names=feature_names,
         categorical_features=categorical_cols or [],
         categorical_levels=category_levels,
+        frequency_maps=frequency_maps,
         best_iteration=int(model.best_iteration or num_boost_round),
     )
     return artifacts, valid_info
@@ -179,6 +207,7 @@ def predict_lgbm(
     id_col: str,
     categorical_cols: Optional[List[str]] = None,
     category_levels: Optional[dict] = None,
+    frequency_maps: Optional[dict] = None,
 ) -> Tuple[pd.Series, pd.Series]:
     test_path = Path(test_path)
     test_df = pd.read_parquet(test_path)
@@ -191,6 +220,10 @@ def predict_lgbm(
 
     if categorical_cols:
         X_test = _apply_categoricals(X_test, categorical_cols, category_levels=category_levels)
+
+    X_test, _ = _add_frequency_features(
+        X_test, categorical_cols or [], frequency_maps=frequency_maps
+    )
 
     preds = model.predict(X_test, num_iteration=model.best_iteration)
     return test_ids, pd.Series(preds, name="clicked")

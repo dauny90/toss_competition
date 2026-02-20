@@ -51,10 +51,10 @@ def main() -> None:
     parser.add_argument("--output-metrics", type=Path, default=Path("reports/metrics_lgbm.json"))
     parser.add_argument("--target-col", type=str, default="clicked")
     parser.add_argument("--id-col", type=str, default="ID")
-    parser.add_argument("--valid-frac", type=float, default=0.0)
+    parser.add_argument("--valid-frac", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num-boost-round", type=int, default=800)
-    parser.add_argument("--early-stopping-rounds", type=int, default=50)
+    parser.add_argument("--num-boost-round", type=int, default=3000)
+    parser.add_argument("--early-stopping-rounds", type=int, default=200)
     parser.add_argument(
         "--categorical-cols",
         type=str,
@@ -101,6 +101,7 @@ def main() -> None:
         id_col=args.id_col,
         categorical_cols=artifacts.categorical_features,
         category_levels=artifacts.categorical_levels,
+        frequency_maps=artifacts.frequency_maps,
     )
 
     sub = pd.read_csv(args.submission_template)
@@ -118,6 +119,7 @@ def main() -> None:
     metrics_payload = {
         "best_iteration": artifacts.best_iteration,
         "categorical_features": artifacts.categorical_features,
+        "frequency_features": [f"{c}__freq" for c in artifacts.categorical_features],
     }
     if valid_info:
         metrics_payload.update(valid_info)
